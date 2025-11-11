@@ -2,14 +2,51 @@
 <html>
   <head>
     <meta charset="utf-8">
-    <title>Meu GitHub Page 🚀</title>
+    <title>Meus repositórios no GitHub</title>
     <style>
-      body { font-family: Arial; text-align: center; margin-top: 50px; }
-      h1 { color: #0366d6; }
+      body { font-family: Arial, sans-serif; background: #f6f8fa; margin: 40px; }
+      h1 { text-align: center; color: #0366d6; }
+      .repo {
+        background: white;
+        border-radius: 10px;
+        padding: 15px;
+        margin: 10px auto;
+        max-width: 600px;
+        box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+      }
+      .repo a { font-weight: bold; color: #0366d6; text-decoration: none; }
+      .repo a:hover { text-decoration: underline; }
+      .desc { color: #555; margin-top: 4px; }
     </style>
   </head>
   <body>
-    <h1>Bem-vindo ao meu site no GitHub Pages!</h1>
-    <p>Esse site está hospedado diretamente do meu repositório no GitHub.</p>
+    <h1>Meus repositórios no GitHub 🚀</h1>
+    <div id="repos">Carregando...</div>
+
+    <script>
+      const username = "gustavorsilva";
+      const reposContainer = document.getElementById('repos');
+
+      fetch(`https://api.github.com/users/${username}/repos?sort=updated&per_page=100`)
+        .then(res => res.json())
+        .then(repos => {
+          reposContainer.innerHTML = '';
+          repos.forEach(repo => {
+            const div = document.createElement('div');
+            div.className = 'repo';
+            div.innerHTML = `
+              <a href="${repo.html_url}" target="_blank">${repo.name}</a>
+              <div class="desc">${repo.description || "Sem descrição"}</div>
+              <div>⭐ ${repo.stargazers_count} | 🍴 ${repo.forks_count}</div>
+              <div>📅 Atualizado em ${new Date(repo.updated_at).toLocaleDateString('pt-BR')}</div>
+            `;
+            reposContainer.appendChild(div);
+          });
+        })
+        .catch(err => {
+          reposContainer.innerHTML = "Erro ao carregar repositórios 😢";
+          console.error(err);
+        });
+    </script>
   </body>
 </html>
