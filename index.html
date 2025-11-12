@@ -1,11 +1,18 @@
 <!DOCTYPE html>
-<html>
+<html lang="pt-BR">
   <head>
-    <meta charset="utf-8">
-    <title>Lambdas e runtimes detectadas</title>
+    <meta charset="UTF-8">
+    <title>Repositórios da Organização</title>
     <style>
-      body { font-family: Arial, sans-serif; background: #f6f8fa; margin: 40px; }
-      h1 { text-align: center; color: #0366d6; }
+      body {
+        font-family: Arial, sans-serif;
+        background: #f6f8fa;
+        margin: 40px;
+      }
+      h1 {
+        text-align: center;
+        color: #0366d6;
+      }
       .repo {
         background: white;
         border-radius: 10px;
@@ -14,109 +21,63 @@
         max-width: 600px;
         box-shadow: 0 2px 4px rgba(0,0,0,0.1);
       }
-      .repo a { font-weight: bold; color: #0366d6; text-decoration: none; }
-      .repo a:hover { text-decoration: underline; }
-      .runtime { color: green; font-weight: bold; }
-      .warning {
-        background: #fff3cd;
-        color: #856404;
-        border: 1px solid #ffeeba;
-        border-radius: 6px;
-        padding: 8px;
-        margin-top: 10px;
+      .repo a {
+        font-weight: bold;
+        color: #0366d6;
+        text-decoration: none;
       }
-      .desc { color: #555; margin-top: 4px; }
+      .repo a:hover {
+        text-decoration: underline;
+      }
+      .desc {
+        color: #555;
+        margin-top: 4px;
+      }
     </style>
   </head>
   <body>
-    <h1>Lambdas e runtimes detectadas 🚀</h1>
+    <h1>Repositórios da Organização 🚀</h1>
     <div id="repos">Carregando...</div>
 
     <script>
-      const username = "gustavorsilva"; // coloque seu nome de usuário
-      const reposContainer = document.getElementById('repos');
+      const orgName = "minha-org"; // 👈 coloque aqui o nome da sua organização
+      const filtroNome = "GG78-APP"; // 👈 filtro desejado
+      const reposContainer = document.getElementById("repos");
 
-      function decodeBase64(str) {
-        try { return atob(str); } catch { return ""; }
-      }
-
-      function detectRuntime(content) {
-        const lower = content.toLowerCase();
-        if (lower.includes("python3.10")) return { name: "Python", version: "3.10" };
-        if (lower.includes("python3.9"))  return { name: "Python", version: "3.9" };
-        if (lower.includes("python3.8"))  return { name: "Python", version: "3.8" };
-        if (lower.includes("python3.7"))  return { name: "Python", version: "3.7" };
-        if (lower.includes("nodejs18"))   return { name: "Node.js", version: "18" };
-        if (lower.includes("nodejs16"))   return { name: "Node.js", version: "16" };
-        if (lower.includes("go1."))       return { name: "Go", version: "1.x" };
-        return { name: "Desconhecido", version: "-" };
-      }
-
-    function precisaAtualizar(runtime) {
-      if (runtime.name === "Python" && runtime.version.includes(".")) {
-        const [major, minor] = runtime.version.split(".").map(Number);
-        // se major < 3 → precisa atualizar
-        // se major === 3 e minor < 10 → também precisa atualizar
-        if (major < 3 || (major === 3 && minor < 10)) return true;
-      }
-      return false;
-    }
-
-      async function getMainRuntime(repo) {
-        const possibleFiles = ["main.py", "lambda_function.py", "index.js", "main.js", "main.tf"];
-        for (const file of possibleFiles) {
-          const url = `https://api.github.com/repos/${username}/${repo.name}/contents/${file}`;
-          const res = await fetch(url);
-          if (res.ok) {
-            const data = await res.json();
-            const content = decodeBase64(data.content || "");
-            return detectRuntime(content);
-          }
-        }
-        return { name: "Desconhecido", version: "-" };
-      }
-
-      async function loadRepos() {
-        try {
-          const res = await fetch(`https://api.github.com/users/${username}/repos?sort=updated&per_page=100`);
-          if (!res.ok) throw new Error("Falha ao buscar repositórios");
-          const repos = await res.json();
-          const filtrados = repos.filter(r => r.name.toLowerCase().includes("lambda"));
-
+      fetch(`https://api.github.com/orgs/${orgName}/repos?sort=updated&per_page=100`)
+        .then(res => {
+          if (!res.ok) throw new Error("Erro ao buscar repositórios");
+          return res.json();
+        })
+        .then(repos => {
           reposContainer.innerHTML = "";
 
-          for (const repo of filtrados) {
-            let runtime = { name: "Desconhecido", version: "-" };
-            try {
-              runtime = await getMainRuntime(repo);
-            } catch (err) {
-              console.warn("Erro ao buscar runtime de", repo.name, err);
-            }
+          // 🔍 filtra os repositórios pelo nome
+          const filtrados = repos.filter(r =>
+            r.name.toLowerCase().includes(filtroNome.toLowerCase())
+          );
 
-            const precisa = precisaAtualizar(runtime);
+          if (filtrados.length === 0) {
+            reposContainer.innerHTML = `<p>Nenhum repositório encontrado com o nome "${filtroNome}" 😅</p>`;
+            return;
+          }
 
+          filtrados.forEach(repo => {
             const div = document.createElement("div");
             div.className = "repo";
             div.innerHTML = `
               <a href="${repo.html_url}" target="_blank">${repo.name}</a>
               <div class="desc">${repo.description || "Sem descrição"}</div>
-              <div>📦 Runtime detectada: <span class="runtime">${runtime.name} ${runtime.version}</span></div>
+              <div>⭐ ${repo.stargazers_count} | 🍴 ${repo.forks_count}</div>
               <div>📅 Atualizado em ${new Date(repo.updated_at).toLocaleDateString("pt-BR")}</div>
-              ${precisa ? `<div class="warning">⚠️ Atualize a runtime para Python 3.10 ou superior.</div>` : ""}
             `;
             reposContainer.appendChild(div);
-          }
-
-          if (filtrados.length === 0) {
-            reposContainer.innerHTML = "<p>Nenhum repositório com 'lambda' encontrado.</p>";
-          }
-        } catch (err) {
-          console.error(err);
+          });
+        })
+        .catch(err => {
           reposContainer.innerHTML = "Erro ao carregar repositórios 😢";
-        }
-      }
-
-      loadRepos();
+          console.error(err);
+        });
     </script>
   </body>
 </html>
