@@ -30,6 +30,9 @@
       fetch(`https://api.github.com/users/${username}/repos?sort=updated&per_page=100`)
         .then(res => res.json())
         .then(repos => {
+          // 🔍 filtra apenas os que têm "lambda" no nome
+          const filtrados = repos.filter(r => r.name.toLowerCase().includes("lambda"));
+          
           reposContainer.innerHTML = '';
           repos.forEach(repo => {
             const div = document.createElement('div');
