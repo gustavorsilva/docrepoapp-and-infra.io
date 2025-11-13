@@ -1,0 +1,83 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+  <head>
+    <meta charset="UTF-8">
+    <title>Repositórios da Organização</title>
+    <style>
+      body {
+        font-family: Arial, sans-serif;
+        background: #f6f8fa;
+        margin: 40px;
+      }
+      h1 {
+        text-align: center;
+        color: #0366d6;
+      }
+      .repo {
+        background: white;
+        border-radius: 10px;
+        padding: 15px;
+        margin: 10px auto;
+        max-width: 600px;
+        box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+      }
+      .repo a {
+        font-weight: bold;
+        color: #0366d6;
+        text-decoration: none;
+      }
+      .repo a:hover {
+        text-decoration: underline;
+      }
+      .desc {
+        color: #555;
+        margin-top: 4px;
+      }
+    </style>
+  </head>
+  <body>
+    <h1>Repositórios da Organização 🚀</h1>
+    <div id="repos">Carregando...</div>
+
+    <script>
+      const orgName = "minha-org"; // 👈 coloque aqui o nome da sua organização
+      const filtroNome = "GG78-APP"; // 👈 filtro desejado
+      const reposContainer = document.getElementById("repos");
+
+      fetch(`https://api.github.com/orgs/${orgName}/repos?sort=updated&per_page=100`)
+        .then(res => {
+          if (!res.ok) throw new Error("Erro ao buscar repositórios");
+          return res.json();
+        })
+        .then(repos => {
+          reposContainer.innerHTML = "";
+
+          // 🔍 filtra os repositórios pelo nome
+          const filtrados = repos.filter(r =>
+            r.name.toLowerCase().includes(filtroNome.toLowerCase())
+          );
+
+          if (filtrados.length === 0) {
+            reposContainer.innerHTML = `<p>Nenhum repositório encontrado com o nome "${filtroNome}" 😅</p>`;
+            return;
+          }
+
+          filtrados.forEach(repo => {
+            const div = document.createElement("div");
+            div.className = "repo";
+            div.innerHTML = `
+              <a href="${repo.html_url}" target="_blank">${repo.name}</a>
+              <div class="desc">${repo.description || "Sem descrição"}</div>
+              <div>⭐ ${repo.stargazers_count} | 🍴 ${repo.forks_count}</div>
+              <div>📅 Atualizado em ${new Date(repo.updated_at).toLocaleDateString("pt-BR")}</div>
+            `;
+            reposContainer.appendChild(div);
+          });
+        })
+        .catch(err => {
+          reposContainer.innerHTML = "Erro ao carregar repositórios 😢";
+          console.error(err);
+        });
+    </script>
+  </body>
+</html>
