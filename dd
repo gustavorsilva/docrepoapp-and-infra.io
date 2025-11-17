@@ -1,40 +1,40 @@
-from datadog_api_client.v2 import ApiClient, Configuration
-from datadog_api_client.v2.api.logs_api import LogsApi
+import requests
+import json
 import os
 
-configuration = Configuration()
+# Suas credenciais
+DD_API_KEY = os.getenv("DATADOG_API_KEY")
+DD_APP_KEY = os.getenv("DATADOG_APP_KEY")
 
-# -------------------------------------------
-# 🔐 SEU ENDPOINT PRIVADO DA API DO DATADOG
-# -------------------------------------------
-configuration.server_variables["site"] = "custom"
-configuration.servers = [
-    {
-        "url": "https://api.meu-datadog-privado.internal",
-        "description": "Datadog PrivateLink"
-    }
-]
+# Endpoint da API (pode trocar para us3/us5/eu)
+DATADOG_API_URL = "https://api.datadoghq.com"
 
-configuration.api_key["apiKeyAuth"] = os.getenv("DATADOG_API_KEY")
-configuration.api_key["appKeyAuth"] = os.getenv("DATADOG_APP_KEY")
+# Query simples
+payload = {
+    "filter": {
+        "query": "service:meu-servico",
+        "from": "now-1h",
+        "to": "now"
+    },
+    "page": {"limit": 100}
+}
 
-query = "service:meu-servico @trace_id:*"
+# Requisição HTTP
+response = requests.post(
+    f"{DATADOG_API_URL}/api/v2/logs/events/search",
+    headers={
+        "DD-API-KEY": DD_API_KEY,
+        "DD-APPLICATION-KEY": DD_APP_KEY,
+        "Content-Type": "application/json"
+    },
+    data=json.dumps(payload)
+)
 
-with ApiClient(configuration) as api_client:
-    api_instance = LogsApi(api_client)
-
-    body = {
-        "filter": {
-            "query": query,
-            "from": "now-1h",
-            "to": "now"
-        },
-        "sort": "timestamp",
-        "page": {"limit": 1000}
-    }
-
-    response = api_instance.list_logs(body=body)
-
-spans = [item.attributes for item in response.data]
-
-print("Total spans:", len(spans))
+# Resultado
+if response.status_code == 200:
+    data = response.json()
+    print("✔ Dados recebidos com sucesso!")
+    print(json.dumps(data, indent=2))
+else:
+    print("❌ Erro ao chamar API:", response.status_code)
+    print(response.text)
