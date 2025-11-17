@@ -2,10 +2,21 @@ from datadog_api_client.v2 import ApiClient, Configuration
 from datadog_api_client.v2.api.logs_api import LogsApi
 import os
 
-# Credenciais
 configuration = Configuration()
-configuration.api_key['apiKeyAuth'] = os.getenv("DATADOG_API_KEY")
-configuration.api_key['appKeyAuth'] = os.getenv("DATADOG_APP_KEY")
+
+# -------------------------------------------
+# 🔐 SEU ENDPOINT PRIVADO DA API DO DATADOG
+# -------------------------------------------
+configuration.server_variables["site"] = "custom"
+configuration.servers = [
+    {
+        "url": "https://api.meu-datadog-privado.internal",
+        "description": "Datadog PrivateLink"
+    }
+]
+
+configuration.api_key["apiKeyAuth"] = os.getenv("DATADOG_API_KEY")
+configuration.api_key["appKeyAuth"] = os.getenv("DATADOG_APP_KEY")
 
 query = "service:meu-servico @trace_id:*"
 
@@ -24,6 +35,6 @@ with ApiClient(configuration) as api_client:
 
     response = api_instance.list_logs(body=body)
 
-    spans = [item.attributes for item in response.data]
-    print("Total de spans:", len(spans))
-    print(spans[:3])
+spans = [item.attributes for item in response.data]
+
+print("Total spans:", len(spans))
