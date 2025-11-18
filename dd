@@ -1,53 +1,51 @@
-from datadog_api_client.v2 import ApiClient, Configuration
-from datadog_api_client.v2.api.logs_api import LogsApi
-import pandas as pd
-import os
+import requests
+import datetime
+import json
 
-configuration = Configuration()
+# --------------------------------------------
+# CONFIGURAÇÃO
+# --------------------------------------------
+API_KEY = "<YOUR_DATADOG_API_KEY>"
+APP_KEY = "<YOUR_DATADOG_APP_KEY>"
 
-configuration.servers = [{"url": "https://api.datadoghq.com"}]
+SERVICE_NAME = "my-service"  # nome do service a filtrar
 
-configuration.api_key["apiKeyAuth"] = os.getenv("DATADOG_API_KEY")
-configuration.api_key["appKeyAuth"] = os.getenv("DATADOG_APP_KEY")
+# Endpoint customizado (sua API proxy)
+PROXY_API_URL = "https://api.proxy.yourdomain.com/api/v2/logs/events/search"
 
-SERVICE_NAME = "meu-servico"
+# --------------------------------------------
+# INTERVALO DE TEMPO: últimos 15 minutos
+# --------------------------------------------
+now = datetime.datetime.utcnow()
+start = (now - datetime.timedelta(minutes=15)).isoformat() + "Z"
+end = now.isoformat() + "Z"
 
-query = f"service:{SERVICE_NAME} @error:true @trace_id:*"
+# --------------------------------------------
+# REQUISIÇÃO
+# --------------------------------------------
+headers = {
+    "DD-API-KEY": API_KEY,
+    "DD-APPLICATION-KEY": APP_KEY,
+    "Content-Type": "application/json"
+}
 
 body = {
     "filter": {
-        "query": query,
-        "from": "now-24h",
-        "to": "now"
+        "from": start,
+        "to": end,
+        "query": f"service:{SERVICE_NAME}"
     },
-    "sort": "timestamp",
-    "page": {"limit": 1000}
+    "page": {
+        "limit": 1   # retornar exatamente 1 log
+    },
+    "options": {
+        "enable_highlight": False,
+        "time_offset": 0
+    }
 }
 
-with ApiClient(configuration) as api_client:
-    api_instance = LogsApi(api_client)
-    response = api_instance.list_logs(body=body)
+response = requests.post(PROXY_API_URL, headers=headers, data=json.dumps(body))
 
-spans = [item.attributes for item in response.data]
-
-rows = []
-for span in spans:
-    service = span.get("service", "")
-    resource = span.get("resource", "")
-    http_status = None
-
-    tags = span.get("tags", [])
-    for tag in tags:
-        if tag.startswith("http.status_code:"):
-            http_status = tag.split(":")[1]
-
-    rows.append({
-        "service": service,
-        "resource": resource,
-        "status_code": http_status
-    })
-
-df = pd.DataFrame(rows)
-df.to_csv("traces_erros_output.csv", index=False)
-
-print("Arquivo gerado com sucesso: traces_erros_output.csv")
+print("Status:", response.status_code)
+print("Response:")
+print(json.dumps(response.json(), indent=2))
