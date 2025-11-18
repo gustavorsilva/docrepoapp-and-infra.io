@@ -36,16 +36,35 @@ body = {
         "query": f"service:{SERVICE_NAME}"
     },
     "page": {
-        "limit": 1   # retornar exatamente 1 log
-    },
-    "options": {
-        "enable_highlight": False,
-        "time_offset": 0
+        "limit": 1
     }
 }
 
 response = requests.post(PROXY_API_URL, headers=headers, data=json.dumps(body))
 
 print("Status:", response.status_code)
-print("Response:")
-print(json.dumps(response.json(), indent=2))
+
+data = response.json()
+
+# --------------------------------------------
+# EXTRAIR CAMPOS (service e requestPath)
+# --------------------------------------------
+try:
+    log = data["data"][0]  # primeiro log
+    attrs = log["attributes"]
+
+    service = attrs.get("service", "N/A")
+    request_path = attrs.get("attributes", {}).get("requestPath", "N/A")
+
+    print("\n=== Log extraído ===")
+    print(f"Service: {service}")
+    print(f"RequestPath: {request_path}")
+
+except Exception as e:
+    print("\nNenhum log encontrado ou erro ao processar:", e)
+
+# --------------------------------------------
+# DEBUG COMPLETO DO JSON
+# --------------------------------------------
+print("\nResponse completo:")
+print(json.dumps(data, indent=2))
