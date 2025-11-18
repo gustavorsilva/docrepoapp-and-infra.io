@@ -1,29 +1,36 @@
 from datadog_api_client.v2 import ApiClient, Configuration
 from datadog_api_client.v2.api.logs_api import LogsApi
-from datadog_api_client.v2.models import *
 import os
 
-# Configure Credenciais
 configuration = Configuration()
-configuration.api_key['apiKeyAuth'] = os.getenv("DATADOG_API_KEY")
-configuration.api_key['appKeyAuth'] = os.getenv("DATADOG_APP_KEY")
 
-# Query para buscar traces (é feita via Logs Search porque spans são armazenados em logs)
+# 👉 Definindo manualmente o endpoint da API
+configuration.servers = [
+    {
+        "url": "https://api.datadoghq.com",
+        "description": "Datadog Public API"
+    }
+]
+
+configuration.api_key["apiKeyAuth"] = os.getenv("DATADOG_API_KEY")
+configuration.api_key["appKeyAuth"] = os.getenv("DATADOG_APP_KEY")
+
 query = "service:meu-servico @trace_id:*"
-timeframe = LogsQueryTime(from_ts="now-1h", to_ts="now")
 
 with ApiClient(configuration) as api_client:
     api_instance = LogsApi(api_client)
 
-    response = api_instance.list_logs(
-        body=LogsListRequest(
-            filter=LogsQueryFilter(query=query, time=timeframe),
-            sort=LogsSort.TIMESTAMP_ASCENDING,
-            page=LogsListRequestPage(limit=1000)
-        )
-    )
+    body = {
+        "filter": {
+            "query": query,
+            "from": "now-1h",
+            "to": "now"
+        },
+        "sort": "timestamp",
+        "page": {"limit": 1000}
+    }
 
-    # Pega os logs/brutos dos spans
-    spans = [item.attributes for item in response.data]
+    response = api_instance.list_logs(body=body)
 
-    print(spans)
+spans = [item.attributes for item in response.data]
+print("Total spans:", len(spans))
