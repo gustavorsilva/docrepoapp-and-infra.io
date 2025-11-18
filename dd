@@ -1,71 +1,42 @@
 from datadog_api_client.v2 import ApiClient, Configuration
-from datadog_api_client.v2.api.traces_api import TracesApi
-from datadog_api_client.v2.model.list_traces_request import ListTracesRequest
+from datadog_api_client.v2.api.logs_api import LogsApi
 import pandas as pd
 import os
 
-# -------------------------
-# CONFIGURAÇÃO
-# -------------------------
 configuration = Configuration()
 
-configuration.servers = [
-    {
-        "url": "https://api.datadoghq.com",
-        "description": "Datadog Public API"
-    }
-]
+configuration.servers = [{"url": "https://api.datadoghq.com"}]
 
 configuration.api_key["apiKeyAuth"] = os.getenv("DATADOG_API_KEY")
 configuration.api_key["appKeyAuth"] = os.getenv("DATADOG_APP_KEY")
 
 SERVICE_NAME = "meu-servico"
 
-# FILTRO: Todos os spans com erros do serviço
-# error:1 → equivale a error:true
-query = f"service:{SERVICE_NAME} error:1"
+query = f"service:{SERVICE_NAME} @error:true @trace_id:*"
 
-# Últimas 24 horas
-TIME_FROM = "now-24h"
-TIME_TO = "now"
+body = {
+    "filter": {
+        "query": query,
+        "from": "now-24h",
+        "to": "now"
+    },
+    "sort": "timestamp",
+    "page": {"limit": 1000}
+}
 
-# -------------------------
-# BUSCA DOS TRACES
-# -------------------------
 with ApiClient(configuration) as api_client:
-    api_instance = TracesApi(api_client)
+    api_instance = LogsApi(api_client)
+    response = api_instance.list_logs(body=body)
 
-    body = ListTracesRequest(
-        filter={
-            "query": query,
-            "from": TIME_FROM,
-            "to": TIME_TO
-        },
-        page={"limit": 1000},
-        sort="timestamp"
-    )
-
-    response = api_instance.list_traces(body=body)
-
-# Extrai atributos brutos
 spans = [item.attributes for item in response.data]
 
-print(f"Total de traces com erro encontrados: {len(spans)}")
-
-
-# -------------------------
-# TRANSFORMAÇÃO PARA TABELA
-# -------------------------
 rows = []
-
 for span in spans:
     service = span.get("service", "")
     resource = span.get("resource", "")
     http_status = None
 
-    # A API do Datadog retorna status em "http.status_code" dentro de meta ou tags
     tags = span.get("tags", [])
-
     for tag in tags:
         if tag.startswith("http.status_code:"):
             http_status = tag.split(":")[1]
@@ -77,15 +48,6 @@ for span in spans:
     })
 
 df = pd.DataFrame(rows)
+df.to_csv("traces_erros_output.csv", index=False)
 
-print("\nPrévia da tabela:")
-print(df.head())
-
-
-# -------------------------
-# EXPORTAR PARA ARQUIVO
-# -------------------------
-output_file = "output_traces_erros.csv"
-df.to_csv(output_file, index=False)
-
-print(f"\nArquivo gerado com sucesso: {output_file}")
+print("Arquivo gerado com sucesso: traces_erros_output.csv")
