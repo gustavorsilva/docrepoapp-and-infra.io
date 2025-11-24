@@ -25,27 +25,35 @@ headers = {
 }
 
 response = requests.post(url, json=payload, headers=headers)
+
+## new
+print("HTTP Status:", response.status_code)
+
 data = response.json()
 
-# Extrair somente status_code e message
+# === Parse dos resultados ===
 registros = []
+
 for item in data.get("data", []):
-    attr = item.get("attributes", {})
+    attrs = item.get("attributes", {})
+
+    # Pegar status_code interno do log
+    status_json = attrs.get("status_code")
+
+    # Converter string → número
+    if status_json is not None:
+        try:
+            status_json = int(status_json)
+        except:
+            pass
+
     registros.append({
-        "status_code": attr.get("status_code"),
-        "message": attr.get("message")
+        "status_code": status_json,
+        "message": attrs.get("message")
     })
 
-# Exportar para Excel
-wb = Workbook()
-ws = wb.active
-ws.title = "dados"
+# === Exportar para Excel ===
+df = pd.DataFrame(registros)
+df.to_excel("output.xlsx", index=False)
 
-ws.append(["status_code", "message"])
-
-for r in registros:
-    ws.append([r["status_code"], r["message"]])
-
-wb.save("saida.xlsx")
-
-print("Arquivo gerado: saida.xlsx")
+print("Arquivo 'output.xlsx' gerado com sucesso!")
