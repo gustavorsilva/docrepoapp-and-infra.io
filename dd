@@ -1,70 +1,51 @@
 import requests
-import datetime
-import json
+from openpyxl import Workbook
 
-# --------------------------------------------
-# CONFIGURAÇÃO
-# --------------------------------------------
-API_KEY = "<YOUR_DATADOG_API_KEY>"
-APP_KEY = "<YOUR_DATADOG_APP_KEY>"
+url = "https://api_proxy.datadog/.../api/v2/spans/events/search"
 
-SERVICE_NAME = "my-service"  # nome do service a filtrar
-
-# Endpoint customizado (sua API proxy)
-PROXY_API_URL = "https://api.proxy.yourdomain.com/api/v2/logs/events/search"
-
-# --------------------------------------------
-# INTERVALO DE TEMPO: últimos 15 minutos
-# --------------------------------------------
-now = datetime.datetime.utcnow()
-start = (now - datetime.timedelta(minutes=15)).isoformat() + "Z"
-end = now.isoformat() + "Z"
-
-# --------------------------------------------
-# REQUISIÇÃO
-# --------------------------------------------
-headers = {
-    "DD-API-KEY": API_KEY,
-    "DD-APPLICATION-KEY": APP_KEY,
-    "Content-Type": "application/json"
-}
-
-body = {
-    "filter": {
-        "from": start,
-        "to": end,
-        "query": f"service:{SERVICE_NAME}"
-    },
-    "page": {
-        "limit": 1
+payload = {
+    "data": {
+        "attributes": {
+            "filter": {
+                "from": "now-15m",
+                "query": "service:ttk-service-bla",
+                "to": "now"
+            },
+            "page": {"limit": 100},
+            "sort": "timestamp"
+        },
+        "type": "search_request"
     }
 }
 
-response = requests.post(PROXY_API_URL, headers=headers, data=json.dumps(body))
+headers = {
+    "DD-API-KEY": "org-***",
+    "DD-APPLICATION-KEY": "org-***",
+    "Content-Type": "application/json"
+}
 
-print("Status:", response.status_code)
-
+response = requests.post(url, json=payload, headers=headers)
 data = response.json()
 
-# --------------------------------------------
-# EXTRAIR CAMPOS (service e requestPath)
-# --------------------------------------------
-try:
-    log = data["data"][0]  # primeiro log
-    attrs = log["attributes"]
+# Extrair somente status_code e message
+registros = []
+for item in data.get("data", []):
+    attr = item.get("attributes", {})
+    registros.append({
+        "status_code": attr.get("status_code"),
+        "message": attr.get("message")
+    })
 
-    service = attrs.get("service", "N/A")
-    request_path = attrs.get("attributes", {}).get("requestPath", "N/A")
+# Exportar para Excel
+wb = Workbook()
+ws = wb.active
+ws.title = "dados"
 
-    print("\n=== Log extraído ===")
-    print(f"Service: {service}")
-    print(f"RequestPath: {request_path}")
+ws.append(["status_code", "message"])
 
-except Exception as e:
-    print("\nNenhum log encontrado ou erro ao processar:", e)
+for r in registros:
+    ws.append([r["status_code"], r["message"]])
 
-# --------------------------------------------
-# DEBUG COMPLETO DO JSON
-# --------------------------------------------
-print("\nResponse completo:")
-print(json.dumps(data, indent=2))
+wb.save("saida.xlsx")
+
+print("Arquivo gerado: saida.xlsx")
