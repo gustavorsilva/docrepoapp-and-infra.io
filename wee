@@ -25,18 +25,24 @@ headers = {
     "Content-Type": "application/json"
 }
 
-response = requests.post(url, json=payload, headers=headers)
+# --- 2. EXECUÇÃO DA REQUISIÇÃO ---
+try:
+    response = requests.post(url, json=payload, headers=headers)
+    response.raise_for_status() # Lança exceção para códigos de status HTTP 4xx/5xx
+    raw_text = response.text
+except requests.exceptions.RequestException as e:
+    print(f"Erro na requisição à API do Datadog: {e}")
+    raw_text = ""
+    
+if not raw_text:
+    print("Não foi possível obter a resposta da API. Encerrando.")
+    exit()
 
-# =========================================================
-# EXTRAÇÃO DE TODOS OS CAMPOS USANDO REGEX
-# =========================================================
-raw_text = response.text
-
-# Expressões Regex para os campos existentes
+# --- 3. EXTRAÇÃO DE TODOS OS CAMPOS USANDO REGEX ---
+# O padrão r'"campo"\s*:\s*"([^"]+)"' captura o valor dentro das aspas após a chave "campo"
 status_codes = re.findall(r'"status_code"\s*:\s*"(\d+)"', raw_text)
 messages = re.findall(r'"mensagem"\s*:\s*"([^"]+)"', raw_text)
 
-# Expressões Regex para os novos campos
 resource_names = re.findall(r'"resource_name"\s*:\s*"([^"]+)"', raw_text)
 paths = re.findall(r'"path"\s*:\s*"([^"]+)"', raw_text)
 dates = re.findall(r'"date"\s*:\s*"([^"]+)"', raw_text)
@@ -45,43 +51,34 @@ funcionais = re.findall(r'"funcional"\s*:\s*"([^"]+)"', raw_text)
 
 rows = []
 
-# =========================================================
-# LÓGICA DE FILTRAGEM E CRIAÇÃO DE LINHAS (Rows)
-# =========================================================
+# --- 4. LÓGICA DE FILTRAGEM (GARANTIA DE TODOS OS VALORES) ---
 
-# Para garantir a extração mais robusta, você deve primeiro identificar
-# o campo que tem a MAIOR frequência (status_codes, geralmente)
-# e garantir que as outras listas tenham o mesmo número de elementos ou usar 
-# uma correspondência baseada em um índice comum (que é complexo e não
-# garantido por regex simples).
-# Vamos assumir que os eventos estão alinhados e usar o mínimo.
-
+# Encontrar o tamanho da menor lista para garantir que todos os 6 campos
+# existam para o registro que está sendo criado.
 min_len = min(
     len(status_codes),
+    len(messages),
     len(resource_names),
     len(paths),
     len(dates),
     len(funcionais)
 )
 
-print(f"\nNúmero de eventos completos (mínimo de todas as listas): {min_len}")
+print(f"Número de registros completos (onde os 6 campos foram encontrados): {min_len}")
 
-# Iterar apenas até o tamanho da menor lista para garantir que todos os campos existam
+# Iterar apenas até o tamanho da menor lista
 for i in range(min_len):
     rows.append({
         "status_code": status_codes[i],
+        "mensagem": messages[i],
         "resource_name": resource_names[i],
         "path": paths[i],
         "date": dates[i],
         "funcional": funcionais[i]
     })
 
-# =========================================================
-# GERAÇÃO DO DATAFRAME E ARQUIVO FINAL
-# =========================================================
+# --- 5. GERAÇÃO DO DATAFRAME E ARQUIVO FINAL ---
 df = pd.DataFrame(rows)
-
-# O DataFrame 'df' agora contém SOMENTE as linhas onde todos os 6 valores foram encontrados.
 
 df.to_excel("resultado_completo_filtrado.xlsx", index=False)
 
