@@ -1,36 +1,49 @@
-# ====================================================
-# 🔍 Captura cada bloco de log contendo os 3 campos
-# ====================================================
-pattern = r'''
-\{
-    (?:
-        [^{}]|
-        \{[^{}]*\}
-    )*?
-    "status_code"\s*:\s*"(?P<status>\d+)"[^}]*?
-    "mensagem"\s*:\s*"(?P<mensagem>[^"]+)"[^}]*?
-    "timestamp"\s*:\s*"(?P<timestamp>[^"]+)"
-    (?:
-        [^{}]|
-        \{[^{}]*\}
-    )*?
-\}
-'''
+# ==============================
+# EXTRAIR status_code e message
+# ==============================
+raw_text = response.text
 
-matches = re.finditer(pattern, raw, re.VERBOSE)
+# Use findall para extrair todas as ocorrências
+status_codes = re.findall(r'"status_code"\s*:\s*"(\d+)"', raw_text)
+messages = re.findall(r'"mensagem"\s*:\s*"([^"]+)"', raw_text)
 
 rows = []
 
-for m in matches:
-    rows.append({
-        "status_code": m.group("status"),
-        "mensagem": m.group("mensagem"),
-        "timestamp": m.group("timestamp")
-    })
+# Percorrer o menor dos dois ou encontrar uma forma de associar (mais robusto)
+# Como o código original itera por status_codes e garante o tamanho,
+# vamos modificar a lógica para incluir a linha SOMENTE SE a mensagem existir.
+# Assumimos que a ordem de status_code e mensagem no raw_text é a mesma.
+
+# Se assumirmos que os arrays status_codes e messages estão *sincronizados*
+# e têm o mesmo tamanho para os eventos completos (o que não é garantido pelo regex simples),
+# podemos usar zip:
+# for status_code, mensagem in zip(status_codes, messages):
+#     rows.append({
+#         "status_code": status_code,
+#         "mensagem": mensagem
+#     })
+
+# ALTERNATIVA: FILTRANDO A PARTIR DA LÓGICA ORIGINAL
+
+for i in range(len(status_codes)):
+    message = messages[i] if i < len(messages) else ""
+    
+    # Adicionar a linha SOMENTE SE a mensagem não estiver vazia
+    if message:
+        rows.append({
+            "status_code": status_codes[i],
+            "mensagem": message
+        })
 
 df = pd.DataFrame(rows)
 
+# ALTERNATIVA 2 (Se você mantivesse a lógica original com "": Filtrar o DF)
+# df = df[df['mensagem'] != ""] # Filtra o DataFrame onde 'mensagem' não é string vazia
+# df = df.dropna(subset=['mensagem']) # Se tivesse usado None em vez de "", usaria dropna
+
 df.to_excel("resultado_filtrado.xlsx", index=False)
 
+print("### DataFrame com Linhas Preenchidas ###")
 print(df.head())
+print(f"\nTotal de linhas (preenchidas): {len(df)}")
 print("\nArquivo gerado: resultado_filtrado.xlsx")
