@@ -1,50 +1,53 @@
-# --- Realização da Requisição ---
+# --- Realização da Requisição (Mantida) ---
 try:
     response = requests.post(url, json=payload, headers=headers)
-    response.raise_for_status()  # Lança uma exceção para códigos de status HTTP ruins (4xx ou 5xx)
-
+    response.raise_for_status()
 except requests.exceptions.RequestException as e:
     print(f"Erro na requisição ao Datadog: {e}")
-    # Encerra o script em caso de falha na requisição
     exit()
 
-# --- Processamento da Resposta ---
-# Converte a resposta JSON em um dicionário Python
+# --- Processamento da Resposta Corrigido ---
 data = response.json()
-
-# Lista para armazenar os dados extraídos
 trace_data = []
 
-# O JSON de resposta do Datadog Spans Search (v2) possui um array de 'data'
 if 'data' in data:
     for span in data['data']:
-        # Verifica se 'attributes' e 'tags' existem antes de tentar acessá-los
         if 'attributes' in span and 'tags' in span['attributes']:
-            tags = span['attributes']['tags']
             
-            # Inicializa com None para garantir que sempre haverá um valor
-            status_code = tags.get('http.status_code', None)
-            path = tags.get('http.url', None) or tags.get('http.route', None)
+            # 1. tags_list é a lista de strings (ex: ['http.status_code:200', 'http.url:/path'])
+            tags_list = span['attributes']['tags']
             
-            # Armazena os dados, ignorando spans sem path relevante se for o objetivo
+            # 2. Converte a lista de tags em um dicionário 'tags_dict'
+            tags_dict = {}
+            for tag_string in tags_list:
+                # Encontra o primeiro ':' para dividir a chave e o valor
+                if ':' in tag_string:
+                    key, value = tag_string.split(':', 1) # Divide apenas no primeiro ':'
+                    tags_dict[key.strip()] = value.strip()
+            
+            # 3. Agora, 'tags_dict' é um dicionário e podemos usar o método .get()
+            
+            # Extrai o status_code
+            status_code = tags_dict.get('http.status_code', None)
+            
+            # Extrai o path, priorizando 'http.url', caindo para 'http.route'
+            path = tags_dict.get('http.url', None) or tags_dict.get('http.route', None)
+            
+            # Armazena os dados
             if path:
                 trace_data.append({
                     'status_code': status_code,
                     'path': path
                 })
 
-# --- Resultado ---
+# --- Resultado (Mantido) ---
 if trace_data:
-    # Cria um DataFrame do pandas (opcional, mas muito útil para análise)
     df = pd.DataFrame(trace_data)
-    
     print("✅ Dados Extraídos com Sucesso:")
     print(df)
     
-    # Exemplo de como visualizar status_code e paths únicos:
     print("\n--- Paths Únicos e Contagem de Status ---")
     summary = df.groupby(['path', 'status_code']).size().reset_index(name='count')
     print(summary)
-
 else:
     print("⚠️ Nenhuma span encontrada ou dados relevantes para extração.")
