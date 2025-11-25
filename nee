@@ -1,0 +1,85 @@
+from datadog_api_client.v2 import ApiClient, Configuration
+from datadog_api_client.v2.api.spans_api import SpansApi
+from datadog_api_client.v2.model.spans_events_query import SpansEventsQuery
+from datadog_api_client.v2.model.spans_sort import SpansSort
+from datadog_api_client.v2.model.spans_list_request import SpansListRequest
+
+import pandas as pd
+
+# --- CONFIGURAÇÃO ---
+# ⚠️ Substitua pelas suas chaves API e APP
+DATADOG_API_KEY = "org-..."
+DATADOG_APP_KEY = "org-..."
+
+configuration = Configuration(
+    api_key={"apiKeyAuth": DATADOG_API_KEY, "appKeyAuth": DATADOG_APP_KEY}
+)
+
+# --- FUNÇÃO DE BUSCA ---
+def buscar_spans_sdk():
+    """Busca spans do Datadog usando o SDK oficial."""
+    with ApiClient(configuration) as api_client:
+        api_instance = SpansApi(api_client)
+
+        # 1. Define a query e o intervalo de tempo
+        spans_query = SpansEventsQuery(
+            query="service:ttk-service-bla",
+            from_param="now-24h",  # O mesmo que "from": "now-24h"
+            to_param="now"
+        )
+
+        # 2. Constrói o corpo da requisição
+        body = SpansListRequest(
+            filter=spans_query,
+            sort=SpansSort("timestamp"),
+            page={"limit": 100} # O mesmo que "page": {"limit": 100}
+        )
+        
+        # 3. Executa a chamada da API
+        try:
+            response = api_instance.list_spans(body=body)
+            return response
+        except Exception as e:
+            print(f"Erro ao chamar a API de Spans: {e}")
+            return None
+
+# --- PROCESSAMENTO ---
+response_data = buscar_spans_sdk()
+rows = []
+campos_necessarios = [
+    "status_code", "mensagem", "resource_name", 
+    "path", "date", "funcional"
+]
+
+if response_data and response_data.data:
+    for event in response_data.data:
+        attributes = event.attributes if event.attributes else {}
+        tags = attributes.tags if hasattr(attributes, 'tags') and attributes.tags else {}
+        
+        # Combina atributos e tags (onde o Datadog costuma colocar os dados)
+        combined_data = {**attributes.to_dict(), **tags}
+        
+        row_data = {}
+        todos_campos_presentes = True
+        
+        for campo in campos_necessarios:
+            valor = combined_data.get(campo)
+            
+            # Filtra a linha se o valor estiver ausente ou vazio
+            if valor is None or (isinstance(valor, str) and valor == ""):
+                todos_campos_presentes = False
+                break
+            
+            row_data[campo] = valor
+
+        if todos_campos_presentes:
+            rows.append(row_data)
+
+# --- 4. GERAÇÃO DO DATAFRAME ---
+df = pd.DataFrame(rows)
+df.to_excel("resultado_sdk_organizado.xlsx", index=False)
+
+print("\n### DataFrame com Linhas Preenchidas (Método SDK) ###")
+print(df.head())
+print(f"\nTotal de linhas no DataFrame final: {len(df)}")
+print("\nArquivo gerado: resultado_sdk_organizado.xlsx")
