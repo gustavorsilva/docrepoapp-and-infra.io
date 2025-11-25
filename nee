@@ -1,13 +1,15 @@
 from datadog_api_client.v2 import ApiClient, Configuration
 from datadog_api_client.v2.api.spans_api import SpansApi
-from datadog_api_client.v2.model.spans_events_query import SpansEventsQuery
 from datadog_api_client.v2.model.spans_sort import SpansSort
 from datadog_api_client.v2.model.spans_list_request import SpansListRequest
 
-import pandas as pd
+# ➡️ IMPORTAÇÃO ALTERADA: Referenciando o módulo model
+import datadog_api_client.v2.model as datadog_models
 
-# --- CONFIGURAÇÃO ---
-# ⚠️ Substitua pelas suas chaves API e APP
+import pandas as pd
+import requests
+
+# ⚠️ 1. CONFIGURAÇÃO - SUBSTITUA SUAS CHAVES AQUI
 DATADOG_API_KEY = "org-..."
 DATADOG_APP_KEY = "org-..."
 
@@ -15,35 +17,43 @@ configuration = Configuration(
     api_key={"apiKeyAuth": DATADOG_API_KEY, "appKeyAuth": DATADOG_APP_KEY}
 )
 
-# --- FUNÇÃO DE BUSCA ---
+# --- FUNÇÃO DE BUSCA USANDO O SPANSAPI ---
 def buscar_spans_sdk():
-    """Busca spans do Datadog usando o SDK oficial."""
-    with ApiClient(configuration) as api_client:
-        api_instance = SpansApi(api_client)
+    """Busca spans do Datadog usando a classe SpansApi do SDK."""
+    print("Iniciando a busca na API do Datadog...")
+    try:
+        with ApiClient(configuration) as api_client:
+            api_instance = SpansApi(api_client)
 
-        # 1. Define a query e o intervalo de tempo
-        spans_query = SpansEventsQuery(
-            query="service:ttk-service-bla",
-            from_param="now-24h",  # O mesmo que "from": "now-24h"
-            to_param="now"
-        )
+            # 3. Definição da Query
+            # ➡️ USO ALTERADO: Referenciando a classe via datadog_models
+            spans_query = datadog_models.SpansEventsQuery( 
+                query="service:ttk-service-bla",
+                from_param="now-24h",
+                to_param="now"
+            )
 
-        # 2. Constrói o corpo da requisição
-        body = SpansListRequest(
-            filter=spans_query,
-            sort=SpansSort("timestamp"),
-            page={"limit": 100} # O mesmo que "page": {"limit": 100}
-        )
-        
-        # 3. Executa a chamada da API
-        try:
+            # 4. Construção do corpo da requisição
+            body = SpansListRequest(
+                filter=spans_query,
+                sort=SpansSort("timestamp"),
+                page={"limit": 100}
+            )
+            
+            # 5. Executa a chamada da API
             response = api_instance.list_spans(body=body)
+            print("Busca concluída com sucesso.")
             return response
-        except Exception as e:
-            print(f"Erro ao chamar a API de Spans: {e}")
-            return None
+            
+    except requests.exceptions.RequestException as e:
+        print(f"Erro de conexão: {e}")
+        return None
+    except Exception as e:
+        print(f"Erro ao chamar a API de Spans (verifique as chaves e permissões): {e}")
+        return None
 
-# --- PROCESSAMENTO ---
+# --- PROCESSAMENTO DOS DADOS ---
+# (O restante do código de processamento permanece idêntico)
 response_data = buscar_spans_sdk()
 rows = []
 campos_necessarios = [
@@ -53,11 +63,9 @@ campos_necessarios = [
 
 if response_data and response_data.data:
     for event in response_data.data:
-        attributes = event.attributes if event.attributes else {}
-        tags = attributes.tags if hasattr(attributes, 'tags') and attributes.tags else {}
-        
-        # Combina atributos e tags (onde o Datadog costuma colocar os dados)
-        combined_data = {**attributes.to_dict(), **tags}
+        attributes = event.attributes.to_dict() if event.attributes else {}
+        tags = attributes.get('tags', {})
+        combined_data = {**attributes, **tags} 
         
         row_data = {}
         todos_campos_presentes = True
@@ -65,7 +73,6 @@ if response_data and response_data.data:
         for campo in campos_necessarios:
             valor = combined_data.get(campo)
             
-            # Filtra a linha se o valor estiver ausente ou vazio
             if valor is None or (isinstance(valor, str) and valor == ""):
                 todos_campos_presentes = False
                 break
@@ -75,11 +82,14 @@ if response_data and response_data.data:
         if todos_campos_presentes:
             rows.append(row_data)
 
-# --- 4. GERAÇÃO DO DATAFRAME ---
+# --- 6. GERAÇÃO DO DATAFRAME E ARQUIVO FINAL ---
 df = pd.DataFrame(rows)
-df.to_excel("resultado_sdk_organizado.xlsx", index=False)
 
-print("\n### DataFrame com Linhas Preenchidas (Método SDK) ###")
+df.to_excel("resultado_sdk_alias.xlsx", index=False)
+
+print("\n-----------------------------------------------------------")
+print("### DataFrame com Linhas Preenchidas (Método SDK via Módulo) ###")
 print(df.head())
 print(f"\nTotal de linhas no DataFrame final: {len(df)}")
-print("\nArquivo gerado: resultado_sdk_organizado.xlsx")
+print("\nArquivo gerado: resultado_sdk_alias.xlsx")
+print("-----------------------------------------------------------")
