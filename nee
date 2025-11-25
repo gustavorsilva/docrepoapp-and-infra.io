@@ -1,45 +1,4 @@
-from datadog_api_client.v2 import ApiClient, Configuration
-from datadog_api_client.v2.api.spans_api import SpansApi
-# Importações dos módulos necessários para construir o corpo da requisição:
-from datadog_api_client.v2.model.spans_sort import SpansSort
-from datadog_api_client.v2.model.spans_list_request import SpansListRequest
-
-# ➡️ SOLUÇÃO PARA O ERRO DE IMPORTAÇÃO: 
-# Importamos o módulo 'model' inteiro e referenciamos a classe SpansEventsQuery a partir dele.
-import datadog_api_client.v2.model as datadog_models
-
-import pandas as pd
-import requests
-import json # Usado para debugging
-
-# ===================================================================
-# 1. CONFIGURAÇÃO
-# ===================================================================
-
-# ⚠️ SUBSTITUA SUAS CHAVES AQUI
-DATADOG_API_KEY = "org-..." 
-DATADOG_APP_KEY = "org-..."
-
-configuration = Configuration(
-    api_key={"apiKeyAuth": DATADOG_API_KEY, "appKeyAuth": DATADOG_APP_KEY}
-)
-
-# --- FUNÇÃO DE BUSCA USANDO O SPANSAPI ---
-def buscar_spans_sdk():
-    """Busca spans do Datadog usando a classe SpansApi do SDK."""
-    print("Iniciando a busca na API do Datadog (últimas 24h)...")
-    try:
-        with ApiClient(configuration) as api_client:
-            api_instance = SpansApi(api_client)
-
-            # 3. Definição da Query usando a referência do módulo datadog_models
-            spans_query = datadog_models.SpansEventsQuery( 
-                query="service:ttk-service-bla",
-                from_param="now-24h",
-                to_param="now"
-            )
-
-            # 4. Construção do corpo da requisição
+# 4. Construção do corpo da requisição
             body = SpansListRequest(
                 filter=spans_query,
                 sort=SpansSort("timestamp"),
@@ -56,14 +15,13 @@ def buscar_spans_sdk():
         return None
 
 # ===================================================================
-# 2. PROCESSAMENTO E FILTRAGEM DE DADOS
+# 2. PROCESSAMENTO E FILTRAGEM DE DADOS (COM CORREÇÃO DE UNICODE)
 # ===================================================================
 
 response_data = buscar_spans_sdk()
 rows = []
 
 # ⚠️ 5. AJUSTE AQUI: Use os nomes exatos das chaves retornadas pelo Datadog.
-# Se o DataFrame estiver vazio, os nomes abaixo provavelmente estão incorretos.
 campos_necessarios = [
     "status_code", 
     "mensagem", 
@@ -81,7 +39,8 @@ if response_data and response_data.data:
     atributos_debug = primeiro_evento.attributes.to_dict() if primeiro_evento.attributes else {}
     print("\n--- INÍCIO DEBUG: CHAVES DO PRIMEIRO EVENTO ---")
     print("Verifique se seus 'campos_necessarios' batem com estas chaves:")
-    print(json.dumps(atributos_debug, indent=2))
+    # Use 'ensure_ascii=False' para ajudar a visualizar caracteres especiais no debug
+    print(json.dumps(atributos_debug, indent=2, ensure_ascii=False)) 
     print("-------------------------------------------\n")
     # ----------------------------------------------------------------
 
@@ -100,6 +59,23 @@ if response_data and response_data.data:
         for campo in campos_necessarios:
             valor = combined_data.get(campo)
             
+            # --- 🌟 CORREÇÃO DE UNICODE: Decodificação Segura ---
+            if isinstance(valor, bytes):
+                try:
+                    # Tenta decodificar de forma segura, ignorando caracteres inválidos
+                    valor = valor.decode('utf-8', errors='ignore')
+                except Exception:
+                    # Caso a decodificação de bytes falhe por algum motivo
+                    valor = str(valor)
+            elif valor is not None:
+                try:
+                    # Garante que qualquer tipo de dado seja uma string UTF-8 válida,
+                    # descartando caracteres incompatíveis no processo
+                    valor = str(valor).encode('utf-8', errors='ignore').decode('utf-8')
+                except Exception:
+                    valor = "" # Se a conversão falhar, use vazio
+            # ----------------------------------------------------
+
             # Condição de Filtragem: Garante que o valor não é nulo e não é string vazia
             if valor is None or (isinstance(valor, (str, list, dict)) and not valor):
                 todos_campos_presentes = False
@@ -124,6 +100,3 @@ print(df.head())
 print(f"\nTotal de linhas no DataFrame final (preenchidas com 6 campos): {len(df)}")
 print("\nArquivo gerado: resultado_sdk_final.xlsx")
 print("-----------------------------------------------------------")
-
-# ⚠️ Próximo Passo: Se o DataFrame continuar vazio (len(df) == 0), 
-# use o bloco de DEBUG impresso acima para corrigir os nomes na lista 'campos_necessarios'.
