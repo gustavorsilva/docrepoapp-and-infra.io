@@ -1,102 +1,50 @@
-# 4. Construção do corpo da requisição
-            body = SpansListRequest(
-                filter=spans_query,
-                sort=SpansSort("timestamp"),
-                page={"limit": 100} # Define o limite de spans por requisição
-            )
+# --- Realização da Requisição ---
+try:
+    response = requests.post(url, json=payload, headers=headers)
+    response.raise_for_status()  # Lança uma exceção para códigos de status HTTP ruins (4xx ou 5xx)
+
+except requests.exceptions.RequestException as e:
+    print(f"Erro na requisição ao Datadog: {e}")
+    # Encerra o script em caso de falha na requisição
+    exit()
+
+# --- Processamento da Resposta ---
+# Converte a resposta JSON em um dicionário Python
+data = response.json()
+
+# Lista para armazenar os dados extraídos
+trace_data = []
+
+# O JSON de resposta do Datadog Spans Search (v2) possui um array de 'data'
+if 'data' in data:
+    for span in data['data']:
+        # Verifica se 'attributes' e 'tags' existem antes de tentar acessá-los
+        if 'attributes' in span and 'tags' in span['attributes']:
+            tags = span['attributes']['tags']
             
-            # 5. Executa a chamada da API
-            response = api_instance.list_spans(body=body)
-            print("Busca concluída com sucesso.")
-            return response
+            # Inicializa com None para garantir que sempre haverá um valor
+            status_code = tags.get('http.status_code', None)
+            path = tags.get('http.url', None) or tags.get('http.route', None)
             
-    except Exception as e:
-        print(f"❌ ERRO FATAL: Falha ao chamar a API ou configurar o SDK. Detalhes: {e}")
-        return None
+            # Armazena os dados, ignorando spans sem path relevante se for o objetivo
+            if path:
+                trace_data.append({
+                    'status_code': status_code,
+                    'path': path
+                })
 
-# ===================================================================
-# 2. PROCESSAMENTO E FILTRAGEM DE DADOS (COM CORREÇÃO DE UNICODE)
-# ===================================================================
+# --- Resultado ---
+if trace_data:
+    # Cria um DataFrame do pandas (opcional, mas muito útil para análise)
+    df = pd.DataFrame(trace_data)
+    
+    print("✅ Dados Extraídos com Sucesso:")
+    print(df)
+    
+    # Exemplo de como visualizar status_code e paths únicos:
+    print("\n--- Paths Únicos e Contagem de Status ---")
+    summary = df.groupby(['path', 'status_code']).size().reset_index(name='count')
+    print(summary)
 
-response_data = buscar_spans_sdk()
-rows = []
-
-# ⚠️ 5. AJUSTE AQUI: Use os nomes exatos das chaves retornadas pelo Datadog.
-campos_necessarios = [
-    "status_code", 
-    "mensagem", 
-    "resource_name", 
-    "path", 
-    "date", 
-    "funcional"
-]
-
-if response_data and response_data.data:
-    print(f"Encontrados {len(response_data.data)} eventos para processamento.")
-
-    # --- DEBUG: IMPRIME O PRIMEIRO EVENTO PARA VERIFICAR AS CHAVES ---
-    primeiro_evento = response_data.data[0]
-    atributos_debug = primeiro_evento.attributes.to_dict() if primeiro_evento.attributes else {}
-    print("\n--- INÍCIO DEBUG: CHAVES DO PRIMEIRO EVENTO ---")
-    print("Verifique se seus 'campos_necessarios' batem com estas chaves:")
-    # Use 'ensure_ascii=False' para ajudar a visualizar caracteres especiais no debug
-    print(json.dumps(atributos_debug, indent=2, ensure_ascii=False)) 
-    print("-------------------------------------------\n")
-    # ----------------------------------------------------------------
-
-    for event in response_data.data:
-        attributes = event.attributes.to_dict() if event.attributes else {}
-        # Tags é um subconjunto comum onde os dados personalizados costumam estar
-        tags = attributes.get('tags', {}) 
-        
-        # Cria um dicionário único de busca
-        combined_data = {**attributes, **tags} 
-        
-        row_data = {}
-        todos_campos_presentes = True
-        
-        # Filtra e coleta dados
-        for campo in campos_necessarios:
-            valor = combined_data.get(campo)
-            
-            # --- 🌟 CORREÇÃO DE UNICODE: Decodificação Segura ---
-            if isinstance(valor, bytes):
-                try:
-                    # Tenta decodificar de forma segura, ignorando caracteres inválidos
-                    valor = valor.decode('utf-8', errors='ignore')
-                except Exception:
-                    # Caso a decodificação de bytes falhe por algum motivo
-                    valor = str(valor)
-            elif valor is not None:
-                try:
-                    # Garante que qualquer tipo de dado seja uma string UTF-8 válida,
-                    # descartando caracteres incompatíveis no processo
-                    valor = str(valor).encode('utf-8', errors='ignore').decode('utf-8')
-                except Exception:
-                    valor = "" # Se a conversão falhar, use vazio
-            # ----------------------------------------------------
-
-            # Condição de Filtragem: Garante que o valor não é nulo e não é string vazia
-            if valor is None or (isinstance(valor, (str, list, dict)) and not valor):
-                todos_campos_presentes = False
-                break
-            
-            row_data[campo] = valor
-
-        if todos_campos_presentes:
-            rows.append(row_data)
-
-# ===================================================================
-# 3. GERAÇÃO DO DATAFRAME
-# ===================================================================
-
-df = pd.DataFrame(rows)
-
-df.to_excel("resultado_sdk_final.xlsx", index=False)
-
-print("\n-----------------------------------------------------------")
-print("### DataFrame Final ###")
-print(df.head())
-print(f"\nTotal de linhas no DataFrame final (preenchidas com 6 campos): {len(df)}")
-print("\nArquivo gerado: resultado_sdk_final.xlsx")
-print("-----------------------------------------------------------")
+else:
+    print("⚠️ Nenhuma span encontrada ou dados relevantes para extração.")
