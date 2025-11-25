@@ -1,49 +1,91 @@
-# ==============================
-# EXTRAIR status_code e message
-# ==============================
+import requests
+import re
+import pandas as pd
+
+url = "https://api.proxy.datadog/api/v2/spans/events/search"
+
+payload = {
+    "data": {
+        "attributes": {
+            "filter": {
+                "query": "service:ttk-service-bla",
+                "from": "now-15m",
+                "to": "now",
+            },
+            "page": {"limit": 100},
+            "sort": "timestamp"
+        },
+        "type": "search_request"
+    }
+}
+
+headers = {
+    "DD-API-KEY": "org-...",
+    "DD-APPLICATION-KEY": "org-...",
+    "Content-Type": "application/json"
+}
+
+response = requests.post(url, json=payload, headers=headers)
+
+# =========================================================
+# EXTRAÇÃO DE TODOS OS CAMPOS USANDO REGEX
+# =========================================================
 raw_text = response.text
 
-# Use findall para extrair todas as ocorrências
+# Expressões Regex para os campos existentes
 status_codes = re.findall(r'"status_code"\s*:\s*"(\d+)"', raw_text)
 messages = re.findall(r'"mensagem"\s*:\s*"([^"]+)"', raw_text)
 
+# Expressões Regex para os novos campos
+resource_names = re.findall(r'"resource_name"\s*:\s*"([^"]+)"', raw_text)
+paths = re.findall(r'"path"\s*:\s*"([^"]+)"', raw_text)
+dates = re.findall(r'"date"\s*:\s*"([^"]+)"', raw_text)
+funcionais = re.findall(r'"funcional"\s*:\s*"([^"]+)"', raw_text)
+
+
 rows = []
 
-# Percorrer o menor dos dois ou encontrar uma forma de associar (mais robusto)
-# Como o código original itera por status_codes e garante o tamanho,
-# vamos modificar a lógica para incluir a linha SOMENTE SE a mensagem existir.
-# Assumimos que a ordem de status_code e mensagem no raw_text é a mesma.
+# =========================================================
+# LÓGICA DE FILTRAGEM E CRIAÇÃO DE LINHAS (Rows)
+# =========================================================
 
-# Se assumirmos que os arrays status_codes e messages estão *sincronizados*
-# e têm o mesmo tamanho para os eventos completos (o que não é garantido pelo regex simples),
-# podemos usar zip:
-# for status_code, mensagem in zip(status_codes, messages):
-#     rows.append({
-#         "status_code": status_code,
-#         "mensagem": mensagem
-#     })
+# Para garantir a extração mais robusta, você deve primeiro identificar
+# o campo que tem a MAIOR frequência (status_codes, geralmente)
+# e garantir que as outras listas tenham o mesmo número de elementos ou usar 
+# uma correspondência baseada em um índice comum (que é complexo e não
+# garantido por regex simples).
+# Vamos assumir que os eventos estão alinhados e usar o mínimo.
 
-# ALTERNATIVA: FILTRANDO A PARTIR DA LÓGICA ORIGINAL
+min_len = min(
+    len(status_codes),
+    len(resource_names),
+    len(paths),
+    len(dates),
+    len(funcionais)
+)
 
-for i in range(len(status_codes)):
-    message = messages[i] if i < len(messages) else ""
-    
-    # Adicionar a linha SOMENTE SE a mensagem não estiver vazia
-    if message:
-        rows.append({
-            "status_code": status_codes[i],
-            "mensagem": message
-        })
+print(f"\nNúmero de eventos completos (mínimo de todas as listas): {min_len}")
 
+# Iterar apenas até o tamanho da menor lista para garantir que todos os campos existam
+for i in range(min_len):
+    rows.append({
+        "status_code": status_codes[i],
+        "resource_name": resource_names[i],
+        "path": paths[i],
+        "date": dates[i],
+        "funcional": funcionais[i]
+    })
+
+# =========================================================
+# GERAÇÃO DO DATAFRAME E ARQUIVO FINAL
+# =========================================================
 df = pd.DataFrame(rows)
 
-# ALTERNATIVA 2 (Se você mantivesse a lógica original com "": Filtrar o DF)
-# df = df[df['mensagem'] != ""] # Filtra o DataFrame onde 'mensagem' não é string vazia
-# df = df.dropna(subset=['mensagem']) # Se tivesse usado None em vez de "", usaria dropna
+# O DataFrame 'df' agora contém SOMENTE as linhas onde todos os 6 valores foram encontrados.
 
-df.to_excel("resultado_filtrado.xlsx", index=False)
+df.to_excel("resultado_completo_filtrado.xlsx", index=False)
 
-print("### DataFrame com Linhas Preenchidas ###")
+print("\n### DataFrame com Linhas Preenchidas (6 Colunas) ###")
 print(df.head())
-print(f"\nTotal de linhas (preenchidas): {len(df)}")
-print("\nArquivo gerado: resultado_filtrado.xlsx")
+print(f"\nTotal de linhas no DataFrame final: {len(df)}")
+print("\nArquivo gerado: resultado_completo_filtrado.xlsx")
