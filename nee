@@ -1,5 +1,5 @@
 # --- Execução da Requisição ---
-print("Iniciando busca por traces com Status 200 (Sucesso)...")
+print("Iniciando busca por traces...")
 
 try:
     response = requests.post(url, headers=headers, json=payload)
@@ -12,27 +12,52 @@ try:
     traces_list = []
     
     if 'data' in data and data['data']:
-        print(f"Traces (Status 200) encontrados: {len(data['data'])}")
+        print(f"Eventos encontrados: {len(data['data'])}")
 
         for trace_event in data['data']:
             attributes = trace_event.get('attributes', {})
+            tags = attributes.get('tags', {}) # Pega o dicionário de tags (muito comum estar aqui)
             
+            # --- LÓGICA ROBUSTA DE EXTRAÇÃO DO STATUS CODE ---
+            status_code = None
+
+            # 1. Tenta pegar de 'attributes.http.status_code' (Estrutura aninhada)
+            if 'http' in attributes and isinstance(attributes['http'], dict):
+                status_code = attributes['http'].get('status_code')
+
+            # 2. Se falhar, tenta pegar de 'attributes.tags.http.status_code' (Tags string)
+            if status_code is None:
+                status_code = tags.get('http.status_code')
+
+            # 3. Se falhar, tenta pegar da raiz 'attributes.http.status_code' (Chave plana)
+            if status_code is None:
+                status_code = attributes.get('http.status_code')
+
+            # Opcional: Converter para inteiro se achar
+            if status_code is not None:
+                try:
+                    status_code = int(status_code)
+                except:
+                    pass
+            # -------------------------------------------------
+
             traces_list.append({
                 'trace_id': attributes.get('trace_id'),
                 'service': attributes.get('service'),
-                # Extrai o status_code do campo http (deve ser 200 devido ao filtro)
-                'status_code': attributes.get('http', {}).get('status_code'),
+                'status_code': status_code, # Usa o valor encontrado
                 'timestamp': attributes.get('timestamp')
             })
 
         # Criação do DataFrame
         df_traces = pd.DataFrame(traces_list)
 
-        print("\n--- DataFrame de Sucessos (200) ---")
+        print("\n--- DataFrame Resultante ---")
+        # Removemos linhas onde status_code ficou vazio (opcional)
         print(df_traces[['trace_id', 'service', 'status_code', 'timestamp']].head())
+        print(f"\nContagem de Status Codes:\n{df_traces['status_code'].value_counts()}")
 
     else:
-        print("Nenhum trace com Status 200 encontrado com o filtro especificado.")
+        print("Nenhum trace encontrado com o filtro especificado.")
         
 except requests.exceptions.RequestException as err:
     print(f"Ocorreu um erro na requisição: {err}")
