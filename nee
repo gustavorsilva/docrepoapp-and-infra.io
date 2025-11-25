@@ -1,53 +1,58 @@
-# --- Realização da Requisição (Mantida) ---
+# --- Execução da Requisição ---
+print("Iniciando busca por traces no Datadog...")
+
 try:
-    response = requests.post(url, json=payload, headers=headers)
-    response.raise_for_status()
-except requests.exceptions.RequestException as e:
-    print(f"Erro na requisição ao Datadog: {e}")
-    exit()
+    # A API espera o payload no corpo da requisição, que será serializado como JSON
+    response = requests.post(url, headers=headers, json=payload)
+    response.raise_for_status() # Lança uma exceção para códigos de status HTTP ruins (4xx ou 5xx)
 
-# --- Processamento da Resposta Corrigido ---
-data = response.json()
-trace_data = []
+    data = response.json()
+    print(f"Status da Resposta: {response.status_code}")
 
-if 'data' in data:
-    for span in data['data']:
-        if 'attributes' in span and 'tags' in span['attributes']:
-            
-            # 1. tags_list é a lista de strings (ex: ['http.status_code:200', 'http.url:/path'])
-            tags_list = span['attributes']['tags']
-            
-            # 2. Converte a lista de tags em um dicionário 'tags_dict'
-            tags_dict = {}
-            for tag_string in tags_list:
-                # Encontra o primeiro ':' para dividir a chave e o valor
-                if ':' in tag_string:
-                    key, value = tag_string.split(':', 1) # Divide apenas no primeiro ':'
-                    tags_dict[key.strip()] = value.strip()
-            
-            # 3. Agora, 'tags_dict' é um dicionário e podemos usar o método .get()
-            
-            # Extrai o status_code
-            status_code = tags_dict.get('http.status_code', None)
-            
-            # Extrai o path, priorizando 'http.url', caindo para 'http.route'
-            path = tags_dict.get('http.url', None) or tags_dict.get('http.route', None)
-            
-            # Armazena os dados
-            if path:
-                trace_data.append({
-                    'status_code': status_code,
-                    'path': path
-                })
+    # --- Processamento dos Dados ---
+    traces_list = []
 
-# --- Resultado (Mantido) ---
-if trace_data:
-    df = pd.DataFrame(trace_data)
-    print("✅ Dados Extraídos com Sucesso:")
-    print(df)
-    
-    print("\n--- Paths Únicos e Contagem de Status ---")
-    summary = df.groupby(['path', 'status_code']).size().reset_index(name='count')
-    print(summary)
-else:
-    print("⚠️ Nenhuma span encontrada ou dados relevantes para extração.")
+    # O objeto de resposta do Datadog tem uma chave 'data' que é uma lista de spans (traces)
+    if 'data' in data and data['data']:
+        print(f"Traces encontrados: {len(data['data'])}")
+
+        for trace_event in data['data']:
+            # Extraindo atributos chave. A estrutura de um span/trace é complexa.
+            # Aqui estamos extraindo o trace_id e o service.
+            attributes = trace_event.get('attributes', {})
+            
+            traces_list.append({
+                'id': trace_event.get('id'), # ID do span/evento
+                'type': trace_event.get('type'),
+                'trace_id': attributes.get('trace_id'),
+                'service': attributes.get('service'),
+                'name': attributes.get('name'),
+                'status': attributes.get('status'),
+                'duration_ns': attributes.get('duration'),
+                'timestamp': attributes.get('timestamp')
+            })
+
+        # Criação do DataFrame
+        df_traces = pd.DataFrame(traces_list)
+
+        print("\n--- DataFrame Gerado ---")
+        print(df_traces[['trace_id', 'service', 'name', 'status', 'timestamp']].head())
+        print(f"\nTotal de linhas no DataFrame: {len(df_traces)}")
+
+        # Exemplo de como salvar em CSV
+        # df_traces.to_csv("datadog_traces_export.csv", index=False)
+        # print("\nDados exportados para datadog_traces_export.csv")
+
+    else:
+        print("Nenhum trace encontrado com o filtro especificado.")
+        print(data) # Imprime a resposta completa para depuração
+        
+except requests.exceptions.HTTPError as errh:
+    print(f"Erro HTTP: {errh}")
+    print(f"Resposta de erro: {response.text}")
+except requests.exceptions.ConnectionError as errc:
+    print(f"Erro de Conexão: {errc}")
+except requests.exceptions.Timeout as errt:
+    print(f"Timeout: {errt}")
+except requests.exceptions.RequestException as err:
+    print(f"Ocorreu um erro: {err}")
