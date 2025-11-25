@@ -1,0 +1,36 @@
+# ====================================================
+# 🔍 Captura cada bloco de log contendo os 3 campos
+# ====================================================
+pattern = r'''
+\{
+    (?:
+        [^{}]|
+        \{[^{}]*\}
+    )*?
+    "status_code"\s*:\s*"(?P<status>\d+)"[^}]*?
+    "mensagem"\s*:\s*"(?P<mensagem>[^"]+)"[^}]*?
+    "timestamp"\s*:\s*"(?P<timestamp>[^"]+)"
+    (?:
+        [^{}]|
+        \{[^{}]*\}
+    )*?
+\}
+'''
+
+matches = re.finditer(pattern, raw, re.VERBOSE)
+
+rows = []
+
+for m in matches:
+    rows.append({
+        "status_code": m.group("status"),
+        "mensagem": m.group("mensagem"),
+        "timestamp": m.group("timestamp")
+    })
+
+df = pd.DataFrame(rows)
+
+df.to_excel("resultado_filtrado.xlsx", index=False)
+
+print(df.head())
+print("\nArquivo gerado: resultado_filtrado.xlsx")
