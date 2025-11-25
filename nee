@@ -1,16 +1,23 @@
 from datadog_api_client.v2 import ApiClient, Configuration
 from datadog_api_client.v2.api.spans_api import SpansApi
+# Importações dos módulos necessários para construir o corpo da requisição:
 from datadog_api_client.v2.model.spans_sort import SpansSort
 from datadog_api_client.v2.model.spans_list_request import SpansListRequest
 
-# ➡️ IMPORTAÇÃO ALTERADA: Referenciando o módulo model
+# ➡️ SOLUÇÃO PARA O ERRO DE IMPORTAÇÃO: 
+# Importamos o módulo 'model' inteiro e referenciamos a classe SpansEventsQuery a partir dele.
 import datadog_api_client.v2.model as datadog_models
 
 import pandas as pd
 import requests
+import json # Usado para debugging
 
-# ⚠️ 1. CONFIGURAÇÃO - SUBSTITUA SUAS CHAVES AQUI
-DATADOG_API_KEY = "org-..."
+# ===================================================================
+# 1. CONFIGURAÇÃO
+# ===================================================================
+
+# ⚠️ SUBSTITUA SUAS CHAVES AQUI
+DATADOG_API_KEY = "org-..." 
 DATADOG_APP_KEY = "org-..."
 
 configuration = Configuration(
@@ -20,13 +27,12 @@ configuration = Configuration(
 # --- FUNÇÃO DE BUSCA USANDO O SPANSAPI ---
 def buscar_spans_sdk():
     """Busca spans do Datadog usando a classe SpansApi do SDK."""
-    print("Iniciando a busca na API do Datadog...")
+    print("Iniciando a busca na API do Datadog (últimas 24h)...")
     try:
         with ApiClient(configuration) as api_client:
             api_instance = SpansApi(api_client)
 
-            # 3. Definição da Query
-            # ➡️ USO ALTERADO: Referenciando a classe via datadog_models
+            # 3. Definição da Query usando a referência do módulo datadog_models
             spans_query = datadog_models.SpansEventsQuery( 
                 query="service:ttk-service-bla",
                 from_param="now-24h",
@@ -37,7 +43,7 @@ def buscar_spans_sdk():
             body = SpansListRequest(
                 filter=spans_query,
                 sort=SpansSort("timestamp"),
-                page={"limit": 100}
+                page={"limit": 100} # Define o limite de spans por requisição
             )
             
             # 5. Executa a chamada da API
@@ -45,35 +51,57 @@ def buscar_spans_sdk():
             print("Busca concluída com sucesso.")
             return response
             
-    except requests.exceptions.RequestException as e:
-        print(f"Erro de conexão: {e}")
-        return None
     except Exception as e:
-        print(f"Erro ao chamar a API de Spans (verifique as chaves e permissões): {e}")
+        print(f"❌ ERRO FATAL: Falha ao chamar a API ou configurar o SDK. Detalhes: {e}")
         return None
 
-# --- PROCESSAMENTO DOS DADOS ---
-# (O restante do código de processamento permanece idêntico)
+# ===================================================================
+# 2. PROCESSAMENTO E FILTRAGEM DE DADOS
+# ===================================================================
+
 response_data = buscar_spans_sdk()
 rows = []
+
+# ⚠️ 5. AJUSTE AQUI: Use os nomes exatos das chaves retornadas pelo Datadog.
+# Se o DataFrame estiver vazio, os nomes abaixo provavelmente estão incorretos.
 campos_necessarios = [
-    "status_code", "mensagem", "resource_name", 
-    "path", "date", "funcional"
+    "status_code", 
+    "mensagem", 
+    "resource_name", 
+    "path", 
+    "date", 
+    "funcional"
 ]
 
 if response_data and response_data.data:
+    print(f"Encontrados {len(response_data.data)} eventos para processamento.")
+
+    # --- DEBUG: IMPRIME O PRIMEIRO EVENTO PARA VERIFICAR AS CHAVES ---
+    primeiro_evento = response_data.data[0]
+    atributos_debug = primeiro_evento.attributes.to_dict() if primeiro_evento.attributes else {}
+    print("\n--- INÍCIO DEBUG: CHAVES DO PRIMEIRO EVENTO ---")
+    print("Verifique se seus 'campos_necessarios' batem com estas chaves:")
+    print(json.dumps(atributos_debug, indent=2))
+    print("-------------------------------------------\n")
+    # ----------------------------------------------------------------
+
     for event in response_data.data:
         attributes = event.attributes.to_dict() if event.attributes else {}
-        tags = attributes.get('tags', {})
+        # Tags é um subconjunto comum onde os dados personalizados costumam estar
+        tags = attributes.get('tags', {}) 
+        
+        # Cria um dicionário único de busca
         combined_data = {**attributes, **tags} 
         
         row_data = {}
         todos_campos_presentes = True
         
+        # Filtra e coleta dados
         for campo in campos_necessarios:
             valor = combined_data.get(campo)
             
-            if valor is None or (isinstance(valor, str) and valor == ""):
+            # Condição de Filtragem: Garante que o valor não é nulo e não é string vazia
+            if valor is None or (isinstance(valor, (str, list, dict)) and not valor):
                 todos_campos_presentes = False
                 break
             
@@ -82,14 +110,20 @@ if response_data and response_data.data:
         if todos_campos_presentes:
             rows.append(row_data)
 
-# --- 6. GERAÇÃO DO DATAFRAME E ARQUIVO FINAL ---
+# ===================================================================
+# 3. GERAÇÃO DO DATAFRAME
+# ===================================================================
+
 df = pd.DataFrame(rows)
 
-df.to_excel("resultado_sdk_alias.xlsx", index=False)
+df.to_excel("resultado_sdk_final.xlsx", index=False)
 
 print("\n-----------------------------------------------------------")
-print("### DataFrame com Linhas Preenchidas (Método SDK via Módulo) ###")
+print("### DataFrame Final ###")
 print(df.head())
-print(f"\nTotal de linhas no DataFrame final: {len(df)}")
-print("\nArquivo gerado: resultado_sdk_alias.xlsx")
+print(f"\nTotal de linhas no DataFrame final (preenchidas com 6 campos): {len(df)}")
+print("\nArquivo gerado: resultado_sdk_final.xlsx")
 print("-----------------------------------------------------------")
+
+# ⚠️ Próximo Passo: Se o DataFrame continuar vazio (len(df) == 0), 
+# use o bloco de DEBUG impresso acima para corrigir os nomes na lista 'campos_necessarios'.
