@@ -2,16 +2,24 @@ import requests
 import base64
 import re
 from datetime import datetime
-import os
-
-TOKEN = os.getenv("GITHUB_TOKEN")
 
 # === CONFIGURAÇÕES ===
 USERNAME = "gustavorsilva"          # usuário ou org do GitHub
+GITHUB_TOKEN = os.getenv("GITHUB_TOKEN") # opcional: GitHub token pessoal (para evitar limite)
 FILTRO = "lambda"                 # palavra a filtrar nos repositórios
 OUTPUT_FILE = "output.md"         # nome do arquivo Markdown de saída
 
 # === FUNÇÕES AUXILIARES ===
+
+def github_request(url):
+    """Faz requisições autenticadas à API do GitHub."""
+    headers = {"Accept": "application/vnd.github.v3+json"}
+    if TOKEN:
+        headers["Authorization"] = f"token {GITHUB_TOKEN}"
+    response = requests.get(url, headers=headers)
+    response.raise_for_status()
+    return response.json()
+
 
 def decode_base64(content):
     """Decodifica conteúdo base64 de arquivos no GitHub."""
