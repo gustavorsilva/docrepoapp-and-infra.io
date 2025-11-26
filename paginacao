@@ -1,0 +1,69 @@
+import requests
+from openpyxl import Workbook
+
+url = "https://api_proxy.datadog/.../api/v2/spans/events/search"
+
+api_key = "org-***"
+app_key = "org-***"
+
+headers = {
+    "DD-API-KEY": api_key,
+    "DD-APPLICATION-KEY": app_key,
+    "Content-Type": "application/json"
+}
+
+payload = {
+    "data": {
+        "attributes": {
+            "filter": {
+                "from": "now-15m",
+                "query": "service:ttk-service-bla",
+                "to": "now"
+            },
+            "page": {"limit": 100},
+            "sort": "timestamp"
+        },
+        "type": "search_request"
+    }
+}
+
+# Criar Excel
+wb = Workbook()
+ws = wb.active
+ws.append(["status_code", "mensagem", "date", "path"])
+
+next_cursor = None
+total = 0
+
+while True:
+    if next_cursor:
+        payload["data"]["attributes"]["page"] = {"cursor": next_cursor}
+
+    response = requests.post(url, json=payload, headers=headers)
+    data = response.json()
+
+    # Extrair eventos
+    events = data.get("data", [])
+
+    for evt in events:
+        attrs = evt.get("attributes", {})
+        tags = attrs.get("tags", [])
+
+        # Extrair campos
+        status = attrs.get("status_code", "")
+        mensagem = attrs.get("mensagem", "")
+        date = attrs.get("timestamp", "")
+        path = attrs.get("resource", "")
+
+        ws.append([status, mensagem, date, path])
+        total += 1
+
+    # Verificar se existe próxima página
+    next_cursor = data.get("meta", {}).get("page", {}).get("after")
+
+    if not next_cursor:
+        break  # acabou a paginação
+
+# Salvar arquivo
+wb.save("resultado.xlsx")
+print(f"Finalizado. Total de linhas salvas: {total}")
