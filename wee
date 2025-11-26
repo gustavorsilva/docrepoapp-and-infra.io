@@ -4,6 +4,12 @@ import pandas as pd
 
 url = "https://api.proxy.datadog/api/v2/spans/events/search"
 
+headers = {
+    "DD-API-KEY": "org-...",
+    "DD-APPLICATION-KEY": "org-...",
+    "Content-Type": "application/json"
+}
+
 payload = {
     "data": {
         "attributes": {
@@ -19,42 +25,41 @@ payload = {
     }
 }
 
-headers = {
-    "DD-API-KEY": "org-...",
-    "DD-APPLICATION-KEY": "org-...",
-    "Content-Type": "application/json"
-}
+# ============================
+# PAGINAÇÃO
+# ============================
+all_raw_text = ""
+next_url = url  # primeira chamada usa a URL base
 
-# --- 2. EXECUÇÃO DA REQUISIÇÃO ---
-try:
-    response = requests.post(url, json=payload, headers=headers)
-    response.raise_for_status() # Lança exceção para códigos de status HTTP 4xx/5xx
-    raw_text = response.text
-except requests.exceptions.RequestException as e:
-    print(f"Erro na requisição à API do Datadog: {e}")
-    raw_text = ""
-    
-if not raw_text:
-    print("Não foi possível obter a resposta da API. Encerrando.")
-    exit()
+while next_url:
+    print(f"🔍 Buscando página: {next_url}")
 
-# --- 3. EXTRAÇÃO DE TODOS OS CAMPOS USANDO REGEX ---
-# O padrão r'"campo"\s*:\s*"([^"]+)"' captura o valor dentro das aspas após a chave "campo"
-status_codes = re.findall(r'"status_code"\s*:\s*"(\d+)"', raw_text)
-messages = re.findall(r'"mensagem"\s*:\s*"([^"]+)"', raw_text)
+    response = requests.post(next_url, json=payload, headers=headers)
+    response.raise_for_status()
 
-resource_names = re.findall(r'"resource_name"\s*:\s*"([^"]+)"', raw_text)
-paths = re.findall(r'"path"\s*:\s*"([^"]+)"', raw_text)
-dates = re.findall(r'"date"\s*:\s*"([^"]+)"', raw_text)
-funcionais = re.findall(r'"funcional"\s*:\s*"([^"]+)"', raw_text)
+    json_data = response.json()
+    all_raw_text += response.text  # concatena TUDO para o regex
 
+    # pega próximo link
+    next_url = json_data.get("links", {}).get("next", None)
+
+
+print("\n✔ Todas as páginas carregadas.")
+print("Tamanho total do texto recebido:", len(all_raw_text))
+
+# ============================
+# EXTRAÇÃO COM REGEX
+# ============================
+
+status_codes = re.findall(r'"status_code"\s*:\s*"(\d+)"', all_raw_text)
+messages = re.findall(r'"mensagem"\s*:\s*"([^"]+)"', all_raw_text)
+resource_names = re.findall(r'"resource_name"\s*:\s*"([^"]+)"', all_raw_text)
+paths = re.findall(r'"path"\s*:\s*"([^"]+)"', all_raw_text)
+dates = re.findall(r'"date"\s*:\s*"([^"]+)"', all_raw_text)
+funcionais = re.findall(r'"funcional"\s*:\s*"([^"]+)"', all_raw_text)
 
 rows = []
 
-# --- 4. LÓGICA DE FILTRAGEM (GARANTIA DE TODOS OS VALORES) ---
-
-# Encontrar o tamanho da menor lista para garantir que todos os 6 campos
-# existam para o registro que está sendo criado.
 min_len = min(
     len(status_codes),
     len(messages),
@@ -64,9 +69,8 @@ min_len = min(
     len(funcionais)
 )
 
-print(f"Número de registros completos (onde os 6 campos foram encontrados): {min_len}")
+print(f"\n🔢 Registros completos encontrados: {min_len}")
 
-# Iterar apenas até o tamanho da menor lista
 for i in range(min_len):
     rows.append({
         "status_code": status_codes[i],
@@ -77,12 +81,8 @@ for i in range(min_len):
         "funcional": funcionais[i]
     })
 
-# --- 5. GERAÇÃO DO DATAFRAME E ARQUIVO FINAL ---
 df = pd.DataFrame(rows)
-
 df.to_excel("resultado_completo_filtrado.xlsx", index=False)
 
-print("\n### DataFrame com Linhas Preenchidas (6 Colunas) ###")
-print(df.head())
-print(f"\nTotal de linhas no DataFrame final: {len(df)}")
 print("\nArquivo gerado: resultado_completo_filtrado.xlsx")
+print(f"Total final exportado: {len(df)} linhas")
