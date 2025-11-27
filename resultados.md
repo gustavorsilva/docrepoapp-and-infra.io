@@ -1,18 +1,14 @@
-# Resultados da análise dos arquivos .tf
+# Relatório de análise de source nos arquivos .tf
 
-## Repositório: lambda-ec2-tagging
-- Arquivo: `lambdastart.tf`
+## Repositorio: lambda-ec2-tagging
+- Arquivo: `infra/lambdatagec2.tf`
 
-### Runtimes encontrados e análise:
-- Runtime: `python3.11` → Desatualizado — versão atual `3.11` (mínimo recomendado: `3.12`)
+- URL: `https://github.com/sua-empresa/seu-repo.git?ref=v3.0.0`
+- Status: Desatualizado (Versao atual: v3.0.0 | Versao recomendada: v6.0.0)
 
----
+## Repositorio: lambdaandscheduler
+- Arquivo: `infra/newscalinggroup.tf`
 
-## Repositório: lambdaandscheduler
-- Arquivo: `main.tf`
-
-### Runtimes encontrados e análise:
-- Runtime: `python3.9` → Desatualizado — versão atual `3.9` (mínimo recomendado: `3.12`)
-
----
+- URL: `https://github.com/sua-organizacao/seu-repo.git?ref=v4.0.0`
+- Status: Atualizado (Versao atual: `v4.0.0`)
 

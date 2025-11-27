@@ -6,77 +6,38 @@ from typing import List, Dict, Optional, Tuple  # <-- IMPORT NECESSÁRIO
 
 # ===== CONFIGURAÇÕES =====
 USERNAME = "gustavorsilva"          # usuário ou org do GitHub
-GITHUB_TOKEN = os.getenv("GITHUB_TOKEN")
+TOKEN = os.getenv("GITHUB_TOKEN")
 FILTRO = "lambda"
 OUTPUT_FILE = "resultados.md"
 
-HEADERS = {"Authorization": f"token {GITHUB_TOKEN}"} if GITHUB_TOKEN else {}
-
-# Regex para encontrar runtime, ex: runtime = "python3.10" ou runtime="nodejs18.x"
-RUNTIME_REGEX = r'runtime\s*=\s*"([^"]+)"'
-
+HEADERS = {"Authorization": f"token {TOKEN}"} if TOKEN else {}
 REQUEST_TIMEOUT = 10.0
 
-# Versão mínima recomendada (major, minor)
-VERSAO_RECOMENDADA_TUPLE: Tuple[int, int] = (3, 12)
+# Regras de versões esperadas conforme origem
+VERSOES_ATUALIZADAS = {
+    "github.com/sua-organizacao/": "v4.0.0",
+    "github.com/sua-empresa/": "v6.0.0",
+}
+
+SOURCE_REGEX = r'source\s*=\s*"git::([^"]+)"'
+REF_REGEX = r'ref=(v[0-9]+\.[0-9]+\.[0-9]+)'
 
 
-def parse_python_version_tuple(runtime: str) -> Optional[Tuple[int, int]]:
-    """
-    Tenta extrair a versão Python do runtime e retorna (major, minor).
-    Exemplos:
-      'python3.10' -> (3, 10)
-      'python3.9'  -> (3, 9)
-      'python3.9.6'-> (3, 9)
-      'python312'  -> (3, 12)  (heurística)
-      'python3'    -> (3, 0)
-    Retorna None se não for possível interpretar como Python com versão.
-    """
-    rt = runtime.lower()
-    if "python" not in rt:
-        return None
+def extrair_source(conteudo: str) -> List[Dict]:
+    results = []
+    for match in re.findall(SOURCE_REGEX, conteudo):
+        url = match
+        ref_match = re.search(REF_REGEX, url)
+        versao_atual = ref_match.group(1) if ref_match else None
+        results.append({"url": url, "versao_atual": versao_atual})
+    return results
 
-    # procura dígitos e pontos logo após 'python' (ou em qualquer lugar)
-    m = re.search(r'python[^\d]*([0-9]+(?:\.[0-9]+)*)', rt)
-    if not m:
-        # tenta capturar apenas dígitos na string
-        m2 = re.search(r'([0-9]{1,3})', rt)
-        if not m2:
-            return None
-        digits = m2.group(1)
-    else:
-        digits = m.group(1)
 
-    # se contém ponto, use os dois primeiros segmentos
-    if '.' in digits:
-        parts = digits.split('.')
-        try:
-            major = int(parts[0])
-            minor = int(parts[1]) if len(parts) > 1 else 0
-            return (major, minor)
-        except ValueError:
-            return None
-
-    # sem ponto: heurística
-    # ex: "39" -> (3,9) ; "310" -> (3,10) ; "312" -> (3,12)
-    if digits.isdigit():
-        # se 1 dígito -> major
-        if len(digits) == 1:
-            return (int(digits), 0)
-        # se 2 dígitos -> primeira é major, segunda é minor
-        if len(digits) == 2:
-            return (int(digits[0]), int(digits[1]))
-        # se 3 dígitos -> ex: 312 => major=first, minor=last two
-        if len(digits) == 3:
-            return (int(digits[0]), int(digits[1:]))
-        # caso maior, pegar primeiro e resto
-        return (int(digits[0]), int(digits[1:]))
-
+def detectar_versao_esperada(url: str) -> Optional[str]:
+    for origem, versao in VERSOES_ATUALIZADAS.items():
+        if origem in url:
+            return versao
     return None
-
-
-def format_version_tuple(t: Tuple[int, int]) -> str:
-    return f"{t[0]}.{t[1]}"
 
 
 def listar_repos(usuario: str) -> List[Dict]:
@@ -97,7 +58,6 @@ def listar_repos(usuario: str) -> List[Dict]:
             break
 
         repos.extend(data)
-
         if len(data) < per_page:
             break
 
@@ -109,23 +69,18 @@ def listar_repos(usuario: str) -> List[Dict]:
 def listar_arquivos(repo_owner: str, repo_name: str, branch: str) -> List[Dict]:
     url = f"https://api.github.com/repos/{repo_owner}/{repo_name}/git/trees/{branch}?recursive=1"
     resp = requests.get(url, headers=HEADERS, timeout=REQUEST_TIMEOUT)
-
     if resp.status_code != 200:
         return []
-
-    data = resp.json()
-    return data.get("tree", [])
+    return resp.json().get("tree", [])
 
 
 def baixar_arquivo(repo_owner: str, repo_name: str, path: str) -> Optional[str]:
     url = f"https://api.github.com/repos/{repo_owner}/{repo_name}/contents/{path}"
     resp = requests.get(url, headers=HEADERS, timeout=REQUEST_TIMEOUT)
-
     if resp.status_code != 200:
         return None
 
     data = resp.json()
-
     if "content" in data and data.get("encoding") == "base64":
         try:
             return base64.b64decode(data["content"]).decode("utf-8", errors="ignore")
@@ -135,86 +90,83 @@ def baixar_arquivo(repo_owner: str, repo_name: str, path: str) -> Optional[str]:
     return None
 
 
-def extrair_runtimes_do_conteudo(conteudo: str) -> List[str]:
-    return re.findall(RUNTIME_REGEX, conteudo)
-
-
 def gerar_markdown(resultados: List[Dict], output_file: str):
     with open(output_file, "w", encoding="utf-8") as md:
-        md.write("# Resultados da análise dos arquivos .tf\n\n")
-
-        if not resultados:
-            md.write("Nenhum runtime encontrado.\n")
-            return
+        md.write("# Relatório de análise de source nos arquivos .tf\n\n")
 
         for item in resultados:
-            md.write(f"## Repositório: {item['repo']}\n")
+            md.write(f"## Repositorio: {item['repo']}\n")
             md.write(f"- Arquivo: `{item['arquivo']}`\n\n")
-            md.write("### Runtimes encontrados e análise:\n")
 
-            if not item["runtimes"]:
-                md.write("- Nenhum runtime encontrado neste arquivo.\n\n")
-                continue
+            for src in item["sources"]:
+                url = src["url"]
+                versao_atual = src["versao_atual"]
+                versao_esperada = detectar_versao_esperada(url)
 
-            for rt in item["runtimes"]:
-                py_version = parse_python_version_tuple(rt)
-                if py_version is None:
-                    md.write(f"- Runtime: `{rt}` → Não aplicável para verificação de versão mínima (não é Python ou versão não interpretável)\n")
+                if versao_atual and versao_esperada:
+                    atualizado = versao_esperada ==  versao_atual
                 else:
-                    if py_version < VERSAO_RECOMENDADA_TUPLE:
-                        md.write((
-                            f"- Runtime: `{rt}` → Desatualizado — versão atual `{format_version_tuple(py_version)}` "
-                            f"(mínimo recomendado: `{format_version_tuple(VERSAO_RECOMENDADA_TUPLE)}`)\n"
-                        ))
-                    else:
-                        md.write(f"- Runtime: `{rt}` → Atual — versão `{format_version_tuple(py_version)}`\n")
+                    atualizado = False
 
-            md.write("\n---\n\n")
+                md.write(f"- URL: `{url}`\n")
+
+                if versao_atual is None:
+                    md.write("- Status: Versao atual não encontrada\n\n")
+                    continue
+
+                if versao_esperada is None:
+                    md.write("- Status: Origem desconhecida, sem regra de versão\n\n")
+                    continue
+
+                if atualizado:
+                    md.write(f"- Status: Atualizado (Versao atual: `{versao_atual}`)\n\n")
+                else:
+                    md.write(
+                        f"- Status: Desatualizado (Versao atual: {versao_atual} | Versao recomendada: {versao_esperada})\n\n"
+                    )
 
 
 def main():
     repos = listar_repos(USERNAME)
 
     if not repos:
-        print("Nenhum repositório retornado. Verifique USERNAME e TOKEN.")
+        print("Nenhum repositório retornado.")
         return
 
-    resultados: List[Dict] = []
+    resultados = []
 
     for repo in repos:
         nome = repo.get("name")
         if not nome:
             continue
 
+
         if FILTRO.lower() not in nome.lower():
             continue
 
-        default_branch = repo.get("default_branch", "main")
+        branch = repo.get("default_branch", "main")
 
-        print("Analisando repositório:", nome, "- branch:", default_branch)
+        print("Analisando repo:", nome)
 
-        arquivos = listar_arquivos(USERNAME, nome, default_branch)
-
+        arquivos = listar_arquivos(USERNAME, nome, branch)
         tf_files = [a["path"] for a in arquivos if a.get("path", "").endswith(".tf")]
-
-        print("  Arquivos .tf encontrados:", len(tf_files))
 
         for tf in tf_files:
             conteudo = baixar_arquivo(USERNAME, nome, tf)
             if conteudo is None:
                 continue
 
-            runtimes = extrair_runtimes_do_conteudo(conteudo)
+            sources = extrair_source(conteudo)
 
-            resultados.append({
-                "repo": nome,
-                "arquivo": tf,
-                "runtimes": runtimes
-            })
+            if sources:
+                resultados.append({
+                    "repo": nome,
+                    "arquivo": tf,
+                    "sources": sources
+                })
 
     gerar_markdown(resultados, OUTPUT_FILE)
     print("Arquivo gerado:", OUTPUT_FILE)
-
 
 if __name__ == "__main__":
     main()
